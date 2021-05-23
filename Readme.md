@@ -2,7 +2,7 @@
 
 
 ## What this Extension does
-The plugin allows you to download GPX tracks from the Komoot route planning feature, although you are not subscribed. At the moment these exports include all points of the route as well as their attidude.
+The plugin allows you to download GPX tracks from the Komoot route planning feature, although you are not subscribed. At the moment these exports include all points of the route as well as their attitude.
 
 
 ## Installation
