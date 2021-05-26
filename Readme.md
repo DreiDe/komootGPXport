@@ -17,3 +17,5 @@ Since this extension is not available on the Chrome Web Store, you have to insta
 
 
 If you open the Komoot website now, there should be a new button labeled `Download GPX` within the plan view.
+
+![Navbar with new Button](assets/navbar.png)
