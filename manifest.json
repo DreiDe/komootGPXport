@@ -1,19 +1,49 @@
 {
-  "name":"komootGPXport",
-  "description":"Easily export GPX routes from komoot without a subscription.",
-  "manifest_version":2,
-  "version":"1",
-  "permissions":["https://*.komoot.de/*", "https://*.komoot.com/*", "https://*.komoot.fr/*", "https://*.komoot.it/*", "https://*.komoot.es/*", "https://*.komoot.nl/*"],
-  "icons": {"48": "assets/icon48.png"},
-  "browser_action":{
-    "default_icon":"assets/icon48.png",
-    "default_popup":"popup.html"
+  "name": "komootGPXport",
+  "description": "Easily export GPX routes from komoot without a subscription.",
+  "manifest_version": 3,
+  "version": "1.1",
+  "permissions": ["scripting"],
+  "host_permissions": [
+    "https://*.komoot.de/*", 
+    "https://*.komoot.com/*", 
+    "https://*.komoot.fr/*", 
+    "https://*.komoot.it/*", 
+    "https://*.komoot.es/*", 
+    "https://*.komoot.nl/*"
+  ],
+  "icons": {
+    "48": "assets/icon48.png"
+  },
+  "action": {
+    "default_icon": "assets/icon48.png",
+    "default_popup": "popup.html"
   },
   "content_scripts": [
     {
-      "matches": ["https://*.komoot.de/*", "https://*.komoot.com/*", "https://*.komoot.fr/*", "https://*.komoot.it/*", "https://*.komoot.es/*", "https://*.komoot.nl/*"],
+      "matches": [
+        "https://*.komoot.de/*", 
+        "https://*.komoot.com/*", 
+        "https://*.komoot.fr/*", 
+        "https://*.komoot.it/*", 
+        "https://*.komoot.es/*", 
+        "https://*.komoot.nl/*"
+      ],
       "js": ["inject.js"],
-      "run_at" : "document_end"
-    }],
-  "web_accessible_resources": ["main.js"]
+      "run_at": "document_end"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["main.js"],
+      "matches": [
+        "https://*.komoot.de/*", 
+        "https://*.komoot.com/*", 
+        "https://*.komoot.fr/*", 
+        "https://*.komoot.it/*", 
+        "https://*.komoot.es/*", 
+        "https://*.komoot.nl/*"
+      ]
+    }
+  ]
 }
