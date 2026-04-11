@@ -10,7 +10,8 @@ const interval = setInterval(function () {
         e.stopPropagation();
         e.preventDefault();
 
-        const coords = kmtBoot.getProps().page.linksEmbedded.tour.linksEmbedded.coordinates.attributes.items;
+        const page = JSON.parse(JSON.stringify(kmtBoot.getProps().page))
+        const coords = page._embedded.tour._embedded.coordinates.items;
 
         if (!coords) {
             alert('There was an error reading the points of your route. If this keeps happening feel free to open an issue.');
