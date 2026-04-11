@@ -26,7 +26,7 @@ const interval = setInterval(function () {
 const jsonToGpx = (coords) => {
     let gpx =
         `<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
-<gpx version="1.1" creator="komootGPXport">
+<gpx version="1.1" creator="komootGPXport" xmlns="http://www.topografix.com/GPX/1/1">
   <metadata></metadata>
   <rte>
   ${coords.map((coord) => {
