@@ -3,6 +3,12 @@
   "description": "Easily export GPX routes from komoot without a subscription.",
   "manifest_version": 3,
   "version": "1.1",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "{a4f2e1b3-7c8d-4e5f-9012-3a6b7c8d9e0f}",
+      "strict_min_version": "109.0"
+    }
+  },
   "permissions": ["scripting"],
   "host_permissions": [
     "https://*.komoot.de/*", 

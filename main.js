@@ -38,8 +38,12 @@ function sanitizeFilename(name) {
 }
 
 function getParsedPageData() {
-    // Parse kmtBoot.setProps() once and cache
-    if (getParsedPageData._cache) return getParsedPageData._cache;
+    // Cache is keyed by URL so SPA navigations always get fresh data
+    if (getParsedPageData._cache && getParsedPageData._url === location.href) {
+        return getParsedPageData._cache;
+    }
+    getParsedPageData._cache = null;
+    getParsedPageData._url = location.href;
     const scripts = document.querySelectorAll('script');
     for (let script of scripts) {
         const content = script.textContent || script.innerHTML;
@@ -209,6 +213,9 @@ function makeDownloadButton(templateBtn, id, clickHandler) {
     downloadBtn.id = id;
     downloadBtn.removeAttribute('href');
     downloadBtn.setAttribute('role', 'button');
+    // Prefer the Navigate button's class (green) over Save/Send-to-Phone (brown)
+    const navigateBtn = document.querySelector('a[role="button"][aria-label="Navigate"]');
+    if (navigateBtn && navigateBtn !== templateBtn) downloadBtn.className = navigateBtn.className;
     downloadBtn.style.cursor = 'pointer';
     const textEl = downloadBtn.querySelector('p');
     if (textEl) textEl.textContent = 'Download GPX (free)';
@@ -268,30 +275,47 @@ function addTourButtons() {
     const isCollectionPage = /\/collection\//.test(window.location.pathname);
     if (!isTourPage && !isCollectionPage) return;
 
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    if (isTourPage) {
+        if (document.querySelector('#download-gpx-tour')) return;
+        const navigateBtn = document.querySelector('a[role="button"][aria-label="Navigate"]');
+        const saveBtn = document.querySelector('a[role="button"][aria-label="Save"]');
+        const templateBtn = navigateBtn || saveBtn;
+        if (!templateBtn) return;
+        const container = templateBtn.parentElement;
+        if (!container) return;
+        // Insert between Navigate and Save to match the expected button order
+        const anchor = saveBtn && saveBtn.parentElement === container ? saveBtn : null;
+        container.insertBefore(makeDownloadButton(templateBtn, 'download-gpx-tour', downloader), anchor);
+        return;
+    }
+
+    // Collection page: one download button per tour card.
+    // Each card has id="tour_XXXXXX" and contains Save/Navigate buttons as stable anchors.
     let idx = 0;
-    while (walker.nextNode()) {
-        if (walker.currentNode.textContent.trim() !== 'Send to Phone') continue;
-        const sendToPhoneLink = walker.currentNode.parentElement?.parentElement;
-        if (!sendToPhoneLink || sendToPhoneLink.tagName !== 'A') continue;
-        const container = sendToPhoneLink.parentElement;
-        if (!container) continue;
+    document.querySelectorAll('[data-test-id="tour-card"]').forEach(card => {
+        const tourId = card.id?.replace('tour_', '');
+        if (!/^\d+$/.test(tourId)) return;
 
         const btnId = idx === 0 ? 'download-gpx-tour' : `download-gpx-tour-${idx}`;
-        if (document.querySelector(`#${btnId}`)) { idx++; continue; }
+        if (document.getElementById(btnId)) { idx++; return; }
 
-        if (isTourPage && idx === 0) {
-            // Single tour page: use the full downloader with all fallbacks
-            container.appendChild(makeDownloadButton(sendToPhoneLink, btnId, downloader));
-        } else if (isCollectionPage) {
-            // Collection page: fetch coordinates by tour ID from nearby link
-            const tourId = getTourIdFromContext(sendToPhoneLink);
-            if (tourId) {
-                container.appendChild(makeDownloadButton(sendToPhoneLink, btnId, () => downloadByTourId(tourId)));
-            }
-        }
+        // Use the Save button as template (present on both Chrome and Firefox)
+        const saveBtn = card.querySelector('a[role="button"][aria-label="Save"]');
+        const navigateBtn = card.querySelector('a[role="button"][aria-label="Navigate with device"]') ||
+                            card.querySelector('a[role="button"][aria-label="Navigate"]');
+        const templateBtn = saveBtn || navigateBtn;
+        if (!templateBtn) return;
+
+        const container = templateBtn.parentElement;
+        if (!container) return;
+
+        // Insert before Save to place it first in the action row
+        container.insertBefore(
+            makeDownloadButton(templateBtn, btnId, () => downloadByTourId(tourId)),
+            saveBtn || null
+        );
         idx++;
-    }
+    });
 }
 
 // === Init: observe DOM and add buttons as appropriate ===
