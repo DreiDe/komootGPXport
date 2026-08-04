@@ -50,11 +50,17 @@ function getParsedPageData() {
         if (content.includes('kmtBoot.setProps(')) {
             const match = content.match(/kmtBoot\.setProps\("(.+)"\)/);
             if (match) {
-                try {
-                    const unescapedJson = match[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-                    getParsedPageData._cache = JSON.parse(unescapedJson);
-                    return getParsedPageData._cache;
-                } catch (e) {}
+                // The props are a JSON string embedded in a JS string literal, so
+                // unescape it as a string literal first, then parse the JSON.
+                for (const parse of [
+                    () => JSON.parse(JSON.parse('"' + match[1] + '"')),
+                    () => JSON.parse(match[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\')),
+                ]) {
+                    try {
+                        getParsedPageData._cache = parse();
+                        return getParsedPageData._cache;
+                    } catch (e) {}
+                }
             }
         }
     }
@@ -103,58 +109,84 @@ function getCoordsFromGetProps() {
     }
 }
 
+// Private tours are only readable with the session cookie, and the API lives on
+// api.komoot.* while the page is served from www.komoot.*, so every API request
+// must opt in to sending credentials cross-origin.
+function fetchJson(url) {
+    return fetch(url, { credentials: 'include' }).then(response => {
+        if (!response.ok) throw new Error(`HTTP error ${response.status} for ${url}`);
+        return response.json();
+    });
+}
+
 function fetchCoordsFromTourLink(tourLink) {
-    // Last resort: fetch coordinates via API links
-    return fetch(tourLink)
-        .then(response => {
-            if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-            return response.json();
-        })
+    // Fetch coordinates via API links
+    return fetchJson(tourLink)
         .then(tour_data => {
-            const coordinates_link = tour_data._links.coordinates.href;
-            return fetch(coordinates_link);
-        })
-        .then(response => {
-            if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-            return response.json();
+            const coordinates_link = tour_data._links?.coordinates?.href;
+            if (!coordinates_link) throw new Error('Tour response has no coordinates link');
+            return fetchJson(coordinates_link);
         })
         .then(coordinates_data => coordinates_data.items);
 }
 
+function getApiHost() {
+    // api.komoot.de serves every locale; keep the page's host family when possible
+    return 'https://api.komoot.de';
+}
+
+function getTourIdFromUrl() {
+    const match = location.pathname.match(/\/(?:tour|smarttour)\/(?:[a-z]+-)?(\d+)/);
+    return match ? match[1] : null;
+}
+
+function fetchCoordsByTourId(tourId) {
+    return fetchJson(`${getApiHost()}/v007/tours/${tourId}/coordinates`)
+        .then(data => {
+            if (!data.items || data.items.length === 0) throw new Error('No coordinates in API response');
+            return data.items;
+        });
+}
+
+function reportFailure(err) {
+    console.error('komootGPXport: Failed to read route coordinates:', err);
+    alert('There was an error reading the points of your route. If this keeps happening feel free to open an issue.');
+}
+
 function downloader() {
     const filename = sanitizeFilename(getTourName()) + '.gpx';
+    const finish = (items) => downloadGpx(filename, jsonToGpx(items));
 
     // Method 1: Parse <script> tags (upstream approach)
     const scriptCoords = getCoordsFromScriptTags();
     if (scriptCoords) {
-        const gpx = jsonToGpx(scriptCoords);
-        downloadGpx(filename, gpx);
+        finish(scriptCoords);
         return;
     }
 
     // Method 2: kmtBoot.getProps() fallback
     const { coords, tourLink } = getCoordsFromGetProps();
     if (coords) {
-        const gpx = jsonToGpx(coords);
-        downloadGpx(filename, gpx);
+        finish(coords);
         return;
     }
 
-    // Method 3: Fetch from tour API link
-    if (tourLink) {
-        fetchCoordsFromTourLink(tourLink)
-            .then(items => {
-                const gpx = jsonToGpx(items);
-                downloadGpx(filename, gpx);
-            })
-            .catch(err => {
-                console.error('komootGPXport: Failed to fetch coordinates:', err);
-                alert('There was an error reading the points of your route. If this keeps happening feel free to open an issue.');
-            });
-        return;
-    }
+    // Method 3: Fetch from the tour API link exposed by the page, if there is one
+    // Method 4: Otherwise derive the tour ID from the URL and hit the API directly.
+    // Saved tour pages embed neither coordinates nor a tour link, so this is the
+    // path that actually serves /tour/<id> pages.
+    const tourId = getTourIdFromUrl();
+    const attempt = tourLink
+        ? fetchCoordsFromTourLink(tourLink).catch(err => {
+              if (!tourId) throw err;
+              console.warn('komootGPXport: tour link failed, falling back to tour ID:', err);
+              return fetchCoordsByTourId(tourId);
+          })
+        : tourId
+            ? fetchCoordsByTourId(tourId)
+            : Promise.reject(new Error('Could not determine the tour ID from the page or URL'));
 
-    alert('There was an error reading the points of your route. If this keeps happening feel free to open an issue.');
+    attempt.then(finish).catch(reportFailure);
 }
 
 // === Planner page: add button next to "Save route" ===
@@ -253,21 +285,9 @@ function downloadByTourId(tourId) {
         ? sanitizeFilename(colName + ' - ' + legName) + '.gpx'
         : colName + '.gpx';
 
-    const coordsUrl = `https://api.komoot.de/v007/tours/${tourId}/coordinates`;
-    fetch(coordsUrl)
-        .then(response => {
-            if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-            return response.json();
-        })
-        .then(data => {
-            if (!data.items || data.items.length === 0) throw new Error('No coordinates found');
-            const gpx = jsonToGpx(data.items);
-            downloadGpx(filename, gpx);
-        })
-        .catch(err => {
-            console.error('komootGPXport: Failed to fetch coordinates:', err);
-            alert('There was an error reading the points of your route. If this keeps happening feel free to open an issue.');
-        });
+    fetchCoordsByTourId(tourId)
+        .then(items => downloadGpx(filename, jsonToGpx(items)))
+        .catch(reportFailure);
 }
 
 function addTourButtons() {
