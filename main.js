@@ -240,13 +240,43 @@ function addPlannerButton() {
 
 // === Tour/collection page: add button after "Send to Phone" ===
 
-function makeDownloadButton(templateBtn, id, clickHandler) {
+// === Locale-independent action button lookup ===
+//
+// komoot localises every aria-label ("Save" -> "Speichern"/"Salva"/...), so
+// matching on the English label only ever worked on /tour/<id> without a locale
+// prefix. The Save button's href is the one locale-stable handle on the action
+// row: it is /customize/tour/<id> on every locale. Everything else in the row is
+// found by position relative to it.
+
+function findSaveButton(root = document) {
+    return root.querySelector('a[role="button"][href*="/customize/tour/"]');
+}
+
+function findActionRow(root = document) {
+    const saveBtn = findSaveButton(root);
+    return saveBtn ? saveBtn.parentElement : null;
+}
+
+function findNavigateButton(root = document) {
+    // Navigate carries no href, so identify it as the primary-styled sibling in
+    // the action row: it is the first <a role="button"> and its class differs
+    // from the secondary buttons (Send to Phone / Save share one class).
+    const container = findActionRow(root);
+    if (!container) return null;
+    const buttons = [...container.querySelectorAll(':scope > a[role="button"]')];
+    const saveBtn = findSaveButton(root);
+    const navBtn = buttons.find(b => b !== saveBtn && !b.hasAttribute('href'));
+    return navBtn && navBtn.className !== saveBtn.className ? navBtn : null;
+}
+
+function makeDownloadButton(templateBtn, id, clickHandler, styleSourceBtn) {
     const downloadBtn = templateBtn.cloneNode(true);
     downloadBtn.id = id;
     downloadBtn.removeAttribute('href');
     downloadBtn.setAttribute('role', 'button');
+    downloadBtn.setAttribute('aria-label', 'Download GPX');
     // Prefer the Navigate button's class (green) over Save/Send-to-Phone (brown)
-    const navigateBtn = document.querySelector('a[role="button"][aria-label="Navigate"]');
+    const navigateBtn = styleSourceBtn !== undefined ? styleSourceBtn : findNavigateButton();
     if (navigateBtn && navigateBtn !== templateBtn) downloadBtn.className = navigateBtn.className;
     downloadBtn.style.cursor = 'pointer';
     const textEl = downloadBtn.querySelector('p');
@@ -297,8 +327,8 @@ function addTourButtons() {
 
     if (isTourPage) {
         if (document.querySelector('#download-gpx-tour')) return;
-        const navigateBtn = document.querySelector('a[role="button"][aria-label="Navigate"]');
-        const saveBtn = document.querySelector('a[role="button"][aria-label="Save"]');
+        const navigateBtn = findNavigateButton();
+        const saveBtn = findSaveButton();
         const templateBtn = navigateBtn || saveBtn;
         if (!templateBtn) return;
         const container = templateBtn.parentElement;
@@ -319,20 +349,27 @@ function addTourButtons() {
         const btnId = idx === 0 ? 'download-gpx-tour' : `download-gpx-tour-${idx}`;
         if (document.getElementById(btnId)) { idx++; return; }
 
-        // Use the Save button as template (present on both Chrome and Firefox)
-        const saveBtn = card.querySelector('a[role="button"][aria-label="Save"]');
-        const navigateBtn = card.querySelector('a[role="button"][aria-label="Navigate with device"]') ||
-                            card.querySelector('a[role="button"][aria-label="Navigate"]');
-        const templateBtn = saveBtn || navigateBtn;
-        if (!templateBtn) return;
+        // Collection cards carry no href on their action buttons and every
+        // aria-label is localised, so identify the action row structurally: it
+        // is the container holding several sibling <a role="button">s (Navigate
+        // + Send to Phone). Logged-out cards also render a lone signup CTA in
+        // its own container, which the multi-button test excludes.
+        const rows = new Map();
+        card.querySelectorAll('a[role="button"]').forEach(b => {
+            const parent = b.parentElement;
+            if (!parent) return;
+            if (!rows.has(parent)) rows.set(parent, []);
+            rows.get(parent).push(b);
+        });
+        const entry = [...rows.entries()].find(([, btns]) => btns.length > 1);
+        if (!entry) return;
 
-        const container = templateBtn.parentElement;
-        if (!container) return;
+        const [container, rowButtons] = entry;
+        const navigateBtn = rowButtons[0];
 
-        // Insert before Save to place it first in the action row
-        container.insertBefore(
-            makeDownloadButton(templateBtn, btnId, () => downloadByTourId(tourId)),
-            saveBtn || null
+        // Append after the row's existing actions
+        container.appendChild(
+            makeDownloadButton(navigateBtn, btnId, () => downloadByTourId(tourId), navigateBtn)
         );
         idx++;
     });
